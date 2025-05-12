@@ -1,0 +1,3 @@
+# Вставь сюда свой Telegram API Token и ID администратора
+BOT_TOKEN = "7855842271:AAGo9dn1lQQEAWYvseTT7W48snTD7BQnJC4"
+ADMIN_IDS = [5018948221]  # Замените на свой Telegram ID
