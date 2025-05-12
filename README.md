@@ -9,8 +9,8 @@
 ## Запуск на Render.com
 1. Создайте новый Web Service
 2. В переменных окружения укажите:
-   - `BOT_TOKEN=ваш_токен`
-   - `ADMIN_IDS=123456789`
+   - `BOT_TOKEN=7855842271:AAGo9dn1lQQEAWYvseTT7W48snTD7BQnJC4`
+   - `ADMIN_IDS=5018948221`
 3. Start command:
    ```
    python main.py
