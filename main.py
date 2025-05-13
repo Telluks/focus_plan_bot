@@ -41,14 +41,11 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("У тебя нет доступа к этой команде.")
         return
     data = load_data()
-    message = "📊 Статистика всех пользователей:
-
-"
+    message = "📊 Статистика всех пользователей:\n\n"
     for uid, user_data in data.items():
         streak = user_data.get("streak", 0)
         tasks_today = user_data.get("tasks", {}).get(today_str(), [])
-        message += f"👤 {uid}: streak {streak}, задач сегодня: {len(tasks_today)}
-"
+        message += f"👤 {uid}: streak {streak}, задач сегодня: {len(tasks_today)}\n"
     await update.message.reply_text(message)
 
 def today_str():
@@ -83,9 +80,7 @@ def schedule_messages(app):
         data = load_data()
         for user_id, user_data in data.items():
             tasks = user_data.get("tasks", {}).get(today_str(), [])
-            message = "🕑 Напоминание:
-" + "
-".join([f"{i+1}. {t}" for i, t in enumerate(tasks)])
+            message = "🕑 Напоминание:\n" + "\n".join([f"{i+1}. {t}" for i, t in enumerate(tasks)])
             try:
                 await app.bot.send_message(chat_id=int(user_id), text=message)
             except Exception as e:
@@ -96,10 +91,7 @@ def schedule_messages(app):
             try:
                 await app.bot.send_message(
                     chat_id=int(user_id),
-                    text="🕗 День заканчивается. Что сделал сегодня?
-✔ Что сделал:
-⏳ Что не успел:
-📈 Вывод:"
+                    text="🕗 День заканчивается. Что сделал сегодня?\n✔ Что сделал:\n⏳ Что не успел:\n📈 Вывод:"
                 )
             except Exception as e:
                 logging.error(f"Ошибка отправки: {e}")
