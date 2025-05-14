@@ -3,7 +3,7 @@ import os; os.environ["PORT"] = "10000"
 import json
 import logging
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from telegram import Update
 from telegram.ext import (
@@ -14,12 +14,15 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from config import BOT_TOKEN, ADMIN_IDS
 
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+    format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 
 DATA_FILE = "data.json"
 scheduler = BackgroundScheduler()
 scheduler.start()
+
+def today_str(offset=0):
+    return (datetime.now() + timedelta(days=offset)).strftime("%Y-%m-%d")
 
 def load_data():
     try:
@@ -34,91 +37,161 @@ def save_data(data):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
-    username = update.effective_user.username
-    logging.info(f"[START] {user_id} (@{username}) нажал /start")
     data = load_data()
     if user_id not in data:
-        data[user_id] = {"tasks": {}, "streak": 0}
+        data[user_id] = {"tasks": {}, "stats": {}}
         save_data(data)
-    await update.message.reply_text(
-        "Привет! Я помогу тебе фокусироваться каждый день.\n"
-        "Напиши 3 задачи, по одной в сообщении."
-    )
+    await update.message.reply_text("Привет! Я помогу тебе вести ежедневный план задач.
+Напиши до 3 основных задач и дополнительные через /добавить_доп.")
+
+async def my_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    today = today_str()
+    data = load_data()
+    tasks = data.get(user_id, {}).get("tasks", {}).get(today, {"main": [], "extra": []})
+    msg = "📋 Твои задачи на сегодня:
+
+"
+    msg += "🌟 Основные задачи:
+" + "
+".join([f"{i+1}. {'✅ ' if t['done'] else '❌ '} {t['text']}" for i, t in enumerate(tasks.get("main", []))]) or "—"
+    msg += "
+
+➕ Дополнительные задачи:
+" + "
+".join([f"{i+1}. {'✅ ' if t['done'] else '❌ '} {t['text']}" for i, t in enumerate(tasks.get("extra", []))]) or "—"
+    await update.message.reply_text(msg)
+
+async def add_extra(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    data = load_data()
+    today = today_str()
+    task_text = " ".join(context.args)
+    if not task_text:
+        await update.message.reply_text("Напиши дополнительную задачу после команды.")
+        return
+    task = {"text": task_text, "done": False}
+    data.setdefault(user_id, {"tasks": {}, "stats": {}})
+    data[user_id]["tasks"].setdefault(today, {"main": [], "extra": []})
+    data[user_id]["tasks"][today]["extra"].append(task)
+    save_data(data)
+    await update.message.reply_text(f"Добавлена доп. задача: {task_text}")
+
+async def complete(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    today = today_str()
+    data = load_data()
+    all_tasks = data.get(user_id, {}).get("tasks", {}).get(today, {"main": [], "extra": []})
+    args = context.args
+    if not args or len(args) < 2 or args[0] not in ("основные", "доп"):
+        await update.message.reply_text("Формат: /завершить основные 2 или /завершить доп 1")
+        return
+    list_name = "main" if args[0] == "основные" else "extra"
+    try:
+        idx = int(args[1]) - 1
+        all_tasks[list_name][idx]["done"] = True
+        save_data(data)
+        await update.message.reply_text("Задача отмечена как выполненная.")
+    except:
+        await update.message.reply_text("Неверный номер задачи.")
+
+async def reset_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    today = today_str()
+    data = load_data()
+    if user_id in data and today in data[user_id]["tasks"]:
+        data[user_id]["tasks"][today] = {"main": [], "extra": []}
+        save_data(data)
+    await update.message.reply_text("Все задачи на сегодня сброшены.")
+
+async def delete_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    today = today_str()
+    data = load_data()
+    args = context.args
+    if not args or len(args) < 2:
+        await update.message.reply_text("Формат: /удалить основные 1 или /удалить доп 2")
+        return
+    list_name = "main" if args[0] == "основные" else "extra"
+    try:
+        idx = int(args[1]) - 1
+        del data[user_id]["tasks"][today][list_name][idx]
+        save_data(data)
+        await update.message.reply_text("Задача удалена.")
+    except:
+        await update.message.reply_text("Неверный номер.")
+
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    data = load_data()
+    count = 0
+    done = 0
+    for date, sets in data.get(user_id, {}).get("tasks", {}).items():
+        for task in sets.get("main", []) + sets.get("extra", []):
+            count += 1
+            if task["done"]:
+                done += 1
+    await update.message.reply_text(f"📊 Выполнено {done} из {count} задач за всё время.")
 
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("У тебя нет доступа к этой команде.")
+        await update.message.reply_text("Нет доступа.")
         return
     data = load_data()
-    message = "📊 Статистика всех пользователей:\n"
-    for uid, user_data in data.items():
-        streak = user_data.get("streak", 0)
-        tasks_today = user_data.get("tasks", {}).get(today_str(), [])
-        message += f"👤 {uid}: streak {streak}, задач сегодня: {len(tasks_today)}\n"
-    await update.message.reply_text(message)
+    msg = "📋 Общая статистика:
+"
+    for uid, val in data.items():
+        total = 0
+        done = 0
+        for day in val["tasks"].values():
+            for task in day["main"] + day["extra"]:
+                total += 1
+                if task["done"]:
+                    done += 1
+        msg += f"👤 {uid}: {done}/{total} задач
+"
+    await update.message.reply_text(msg)
 
-def today_str():
-    return datetime.now().strftime("%Y-%m-%d")
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    username = update.effective_user.username
-    text = update.message.text.strip()
-    logging.info(f"[MSG] {user_id} (@{username}): {text}")
+def transfer_tasks():
     data = load_data()
-
-    if user_id not in data:
-        await update.message.reply_text("Привет! Напиши /start, чтобы зарегистрироваться.")
-        return
-
-    tasks = data.get(user_id, {}).get("tasks", {})
+    yesterday = today_str(-1)
     today = today_str()
-    if today not in tasks:
-        tasks[today] = []
+    for user, udata in data.items():
+        if yesterday in udata["tasks"]:
+            for list_name in ["main", "extra"]:
+                for task in udata["tasks"][yesterday][list_name]:
+                    if not task["done"]:
+                        data[user]["tasks"].setdefault(today, {"main": [], "extra": []})
+                        data[user]["tasks"][today][list_name].append(task)
+    save_data(data)
 
-    if len(tasks[today]) < 3:
-        tasks[today].append(text)
-        data[user_id]["tasks"] = tasks
-        save_data(data)
-        await update.message.reply_text(f"✅ Задача сохранена: {text}")
-    else:
-        await update.message.reply_text("⚠️ Ты уже добавил 3 задачи на сегодня.")
+def schedule_jobs(app):
+    scheduler.add_job(lambda: app.create_task(send_morning(app)), "cron", hour=11)
+    scheduler.add_job(lambda: app.create_task(send_afternoon(app)), "cron", hour=14)
+    scheduler.add_job(lambda: app.create_task(send_evening(app)), "cron", hour=20)
+    scheduler.add_job(transfer_tasks, "cron", hour=5)
 
-def schedule_messages(app):
-    async def send_morning():
-        for user_id in load_data():
-            try:
-                await app.bot.send_message(
-                    chat_id=int(user_id),
-                    text="🕚 Утро! Введи 3 главные задачи дня:"
-                )
-            except Exception as e:
-                logging.error(f"Ошибка отправки (утро): {e}")
+async def send_morning(app):  # reminder + перенос
+    for user in load_data():
+        try:
+            await app.bot.send_message(chat_id=int(user), text="🌅 Доброе утро! Введи 3 основные задачи.")
+        except:
+            pass
 
-    async def send_afternoon():
-        data = load_data()
-        for user_id, user_data in data.items():
-            tasks = user_data.get("tasks", {}).get(today_str(), [])
-            message = "🕑 Напоминание:\n" + "\n".join([f"{i+1}. {t}" for i, t in enumerate(tasks)])
-            try:
-                await app.bot.send_message(chat_id=int(user_id), text=message)
-            except Exception as e:
-                logging.error(f"Ошибка отправки (день): {e}")
+async def send_afternoon(app):
+    for user in load_data():
+        try:
+            await app.bot.send_message(chat_id=int(user), text="🕑 Напоминание о задачах. Проверь прогресс.")
+        except:
+            pass
 
-    async def send_evening():
-        for user_id in load_data():
-            try:
-                await app.bot.send_message(
-                    chat_id=int(user_id),
-                    text="🕗 День заканчивается. Что сделал сегодня?\n"
-                         "✔ Что сделал:\n⏳ Что не успел:\n📈 Вывод:"
-                )
-            except Exception as e:
-                logging.error(f"Ошибка отправки (вечер): {e}")
-
-    scheduler.add_job(lambda: app.create_task(send_morning()), "cron", hour=11)
-    scheduler.add_job(lambda: app.create_task(send_afternoon()), "cron", hour=14)
-    scheduler.add_job(lambda: app.create_task(send_evening()), "cron", hour=20)
+async def send_evening(app):
+    for user in load_data():
+        try:
+            await app.bot.send_message(chat_id=int(user),
+                text="🌇 Вечерний отчёт: что удалось сделать? Отметь выполненные задачи командой /завершить")
+        except:
+            pass
 
 def run_dummy_server():
     class DummyHandler(BaseHTTPRequestHandler):
@@ -126,15 +199,20 @@ def run_dummy_server():
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b"Bot is running.")
-    server = HTTPServer(("0.0.0.0", int(os.environ.get("PORT", 10000))), DummyHandler)
+    server = HTTPServer(("0.0.0.0", int(os.environ["PORT"])), DummyHandler)
     server.serve_forever()
 
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("мои_задачи", my_tasks))
+    app.add_handler(CommandHandler("добавить_доп", add_extra))
+    app.add_handler(CommandHandler("удалить", delete_task))
+    app.add_handler(CommandHandler("завершить", complete))
+    app.add_handler(CommandHandler("сброс", reset_tasks))
+    app.add_handler(CommandHandler("статистика", stats))
     app.add_handler(CommandHandler("admin", admin))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    schedule_messages(app)
+    schedule_jobs(app)
     threading.Thread(target=run_dummy_server, daemon=True).start()
     app.run_polling()
 
