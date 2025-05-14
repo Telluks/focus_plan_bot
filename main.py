@@ -34,11 +34,14 @@ def save_data(data):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
+    username = update.effective_user.username
+    logging.info(f"[START] {user_id} (@{username}) нажал /start")
     data = load_data()
     if user_id not in data:
         data[user_id] = {"tasks": {}, "streak": 0}
         save_data(data)
-    await update.message.reply_text("Привет! Я помогу тебе фокусироваться каждый день.")
+    await update.message.reply_text("Привет! Я помогу тебе фокусироваться каждый день.
+Напиши 3 задачи, по одной в сообщении.")
 
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
@@ -57,19 +60,27 @@ def today_str():
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
+    username = update.effective_user.username
     text = update.message.text.strip()
+    logging.info(f"[MSG] {user_id} (@{username}): {text}")
     data = load_data()
+
+    if user_id not in data:
+        await update.message.reply_text("Привет! Напиши /start, чтобы зарегистрироваться.")
+        return
+
     tasks = data.get(user_id, {}).get("tasks", {})
     today = today_str()
     if today not in tasks:
         tasks[today] = []
+
     if len(tasks[today]) < 3:
         tasks[today].append(text)
         data[user_id]["tasks"] = tasks
         save_data(data)
-        await update.message.reply_text(f"Задача сохранена: {text}")
+        await update.message.reply_text(f"✅ Задача сохранена: {text}")
     else:
-        await update.message.reply_text("Ты уже добавил 3 задачи на сегодня.")
+        await update.message.reply_text("⚠️ Ты уже добавил 3 задачи на сегодня.")
 
 def schedule_messages(app):
     async def send_morning():
@@ -78,7 +89,7 @@ def schedule_messages(app):
                 await app.bot.send_message(chat_id=int(user_id),
                                            text="🕚 Утро! Введи 3 главные задачи дня:")
             except Exception as e:
-                logging.error(f"Ошибка отправки: {e}")
+                logging.error(f"Ошибка отправки (утро): {e}")
 
     async def send_afternoon():
         data = load_data()
@@ -88,7 +99,7 @@ def schedule_messages(app):
             try:
                 await app.bot.send_message(chat_id=int(user_id), text=message)
             except Exception as e:
-                logging.error(f"Ошибка отправки: {e}")
+                logging.error(f"Ошибка отправки (день): {e}")
 
     async def send_evening():
         for user_id in load_data():
@@ -98,7 +109,7 @@ def schedule_messages(app):
                     text="🕗 День заканчивается. Что сделал сегодня?\n✔ Что сделал:\n⏳ Что не успел:\n📈 Вывод:"
                 )
             except Exception as e:
-                logging.error(f"Ошибка отправки: {e}")
+                logging.error(f"Ошибка отправки (вечер): {e}")
 
     scheduler.add_job(lambda: app.create_task(send_morning()), "cron", hour=11)
     scheduler.add_job(lambda: app.create_task(send_afternoon()), "cron", hour=14)
@@ -119,11 +130,7 @@ def main():
     app.add_handler(CommandHandler("admin", admin))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     schedule_messages(app)
-
-    # Запускаем фоновый HTTP-сервер, чтобы Render видел "порт"
     threading.Thread(target=run_dummy_server, daemon=True).start()
-
-    # Запускаем Telegram-бота
     app.run_polling()
 
 if __name__ == "__main__":
