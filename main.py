@@ -40,8 +40,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id not in data:
         data[user_id] = {"tasks": {}, "streak": 0}
         save_data(data)
-    await update.message.reply_text("Привет! Я помогу тебе фокусироваться каждый день.
-Напиши 3 задачи, по одной в сообщении.")
+    await update.message.reply_text(
+        "Привет! Я помогу тебе фокусироваться каждый день.\n"
+        "Напиши 3 задачи, по одной в сообщении."
+    )
 
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
@@ -86,8 +88,10 @@ def schedule_messages(app):
     async def send_morning():
         for user_id in load_data():
             try:
-                await app.bot.send_message(chat_id=int(user_id),
-                                           text="🕚 Утро! Введи 3 главные задачи дня:")
+                await app.bot.send_message(
+                    chat_id=int(user_id),
+                    text="🕚 Утро! Введи 3 главные задачи дня:"
+                )
             except Exception as e:
                 logging.error(f"Ошибка отправки (утро): {e}")
 
@@ -106,7 +110,8 @@ def schedule_messages(app):
             try:
                 await app.bot.send_message(
                     chat_id=int(user_id),
-                    text="🕗 День заканчивается. Что сделал сегодня?\n✔ Что сделал:\n⏳ Что не успел:\n📈 Вывод:"
+                    text="🕗 День заканчивается. Что сделал сегодня?\n"
+                         "✔ Что сделал:\n⏳ Что не успел:\n📈 Вывод:"
                 )
             except Exception as e:
                 logging.error(f"Ошибка отправки (вечер): {e}")
