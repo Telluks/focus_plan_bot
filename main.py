@@ -1,3 +1,5 @@
+import os; os.environ["PORT"] = "10000"
+
 import json
 import logging
 from datetime import datetime
@@ -41,7 +43,7 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("У тебя нет доступа к этой команде.")
         return
     data = load_data()
-    message = "📊 Статистика всех пользователей:\n\n"
+    message = "📊 Статистика всех пользователей:\n"
     for uid, user_data in data.items():
         streak = user_data.get("streak", 0)
         tasks_today = user_data.get("tasks", {}).get(today_str(), [])
