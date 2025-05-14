@@ -41,25 +41,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id not in data:
         data[user_id] = {"tasks": {}, "stats": {}}
         save_data(data)
-    await update.message.reply_text("Привет! Я помогу тебе вести ежедневный план задач.
-Напиши до 3 основных задач и дополнительные через /добавить_доп.")
+    await update.message.reply_text("Привет! Я помогу тебе вести ежедневный план задач.\nНапиши до 3 основных задач и дополнительные через /добавить_доп.")
 
 async def my_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     today = today_str()
     data = load_data()
     tasks = data.get(user_id, {}).get("tasks", {}).get(today, {"main": [], "extra": []})
-    msg = "📋 Твои задачи на сегодня:
-
-"
-    msg += "🌟 Основные задачи:
-" + "
-".join([f"{i+1}. {'✅ ' if t['done'] else '❌ '} {t['text']}" for i, t in enumerate(tasks.get("main", []))]) or "—"
-    msg += "
-
-➕ Дополнительные задачи:
-" + "
-".join([f"{i+1}. {'✅ ' if t['done'] else '❌ '} {t['text']}" for i, t in enumerate(tasks.get("extra", []))]) or "—"
+    msg = "📋 Твои задачи на сегодня:\n\n"
+    msg += "🌟 Основные задачи:\n" + "\n".join([f"{i+1}. {'✅ ' if t['done'] else '❌ '} {t['text']}" for i, t in enumerate(tasks.get("main", []))]) or "—"
+    msg += "\n\n➕ Дополнительные задачи:\n" + "\n".join([f"{i+1}. {'✅ ' if t['done'] else '❌ '} {t['text']}" for i, t in enumerate(tasks.get("extra", []))]) or "—"
     await update.message.reply_text(msg)
 
 async def add_extra(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -134,12 +125,11 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"📊 Выполнено {done} из {count} задач за всё время.")
 
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
+    if str(update.effective_user.id) not in ADMIN_IDS:
         await update.message.reply_text("Нет доступа.")
         return
     data = load_data()
-    msg = "📋 Общая статистика:
-"
+    msg = "📋 Общая статистика:\n"
     for uid, val in data.items():
         total = 0
         done = 0
@@ -148,8 +138,7 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 total += 1
                 if task["done"]:
                     done += 1
-        msg += f"👤 {uid}: {done}/{total} задач
-"
+        msg += f"👤 {uid}: {done}/{total} задач\n"
     await update.message.reply_text(msg)
 
 def transfer_tasks():
@@ -171,7 +160,7 @@ def schedule_jobs(app):
     scheduler.add_job(lambda: app.create_task(send_evening(app)), "cron", hour=20)
     scheduler.add_job(transfer_tasks, "cron", hour=5)
 
-async def send_morning(app):  # reminder + перенос
+async def send_morning(app):
     for user in load_data():
         try:
             await app.bot.send_message(chat_id=int(user), text="🌅 Доброе утро! Введи 3 основные задачи.")
@@ -188,8 +177,7 @@ async def send_afternoon(app):
 async def send_evening(app):
     for user in load_data():
         try:
-            await app.bot.send_message(chat_id=int(user),
-                text="🌇 Вечерний отчёт: что удалось сделать? Отметь выполненные задачи командой /завершить")
+            await app.bot.send_message(chat_id=int(user), text="🌇 Вечерний отчёт: что удалось сделать? Отметь выполненные задачи командой /завершить")
         except:
             pass
 
