@@ -2,11 +2,13 @@ import os; os.environ["PORT"] = "10000"
 
 import json
 import logging
+import threading
 from datetime import datetime
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, ContextTypes,
-    MessageHandler, filters, CallbackContext
+    MessageHandler, filters
 )
 from apscheduler.schedulers.background import BackgroundScheduler
 from config import BOT_TOKEN, ADMIN_IDS
@@ -102,12 +104,26 @@ def schedule_messages(app):
     scheduler.add_job(lambda: app.create_task(send_afternoon()), "cron", hour=14)
     scheduler.add_job(lambda: app.create_task(send_evening()), "cron", hour=20)
 
+def run_dummy_server():
+    class DummyHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"Bot is running.")
+    server = HTTPServer(("0.0.0.0", int(os.environ.get("PORT", 10000))), DummyHandler)
+    server.serve_forever()
+
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     schedule_messages(app)
+
+    # Запускаем фоновый HTTP-сервер, чтобы Render видел "порт"
+    threading.Thread(target=run_dummy_server, daemon=True).start()
+
+    # Запускаем Telegram-бота
     app.run_polling()
 
 if __name__ == "__main__":
