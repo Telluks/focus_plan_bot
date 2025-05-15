@@ -43,15 +43,50 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_data(data)
     await update.message.reply_text(
         "Привет! Я помогу тебе вести ежедневный план задач.\n"
-        "Напиши до 3 основных задач и дополнительные — через /addextra."
+        "Добавляй основные задачи через /addmain или дополнительные через /addextra.\n"
+        "Для просмотра задач используй /mytasks."
     )
+
+async def add_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    today = today_str()
+    text = " ".join(context.args)
+    if not text:
+        await update.message.reply_text("Напиши текст задачи после команды.")
+        return
+    data = load_data()
+    data.setdefault(user_id, {"tasks": {}, "stats": {}})
+    data[user_id]["tasks"].setdefault(today, {"main": [], "extra": []})
+
+    main_tasks = data[user_id]["tasks"][today]["main"]
+
+    if len(main_tasks) < 3:
+        main_tasks.append({"text": text, "done": False})
+        save_data(data)
+        await update.message.reply_text(f"Основная задача добавлена: {text}")
+    else:
+        await update.message.reply_text("Лимит основных задач на сегодня достигнут (3).")
+
+async def add_extra(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    today = today_str()
+    text = " ".join(context.args)
+    if not text:
+        await update.message.reply_text("Напиши текст задачи после команды.")
+        return
+    data = load_data()
+    data.setdefault(user_id, {"tasks": {}, "stats": {}})
+    data[user_id]["tasks"].setdefault(today, {"main": [], "extra": []})
+    data[user_id]["tasks"][today]["extra"].append({"text": text, "done": False})
+    save_data(data)
+    await update.message.reply_text("Дополнительная задача добавлена.")
 
 async def my_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     today = today_str()
     data = load_data()
     tasks = data.get(user_id, {}).get("tasks", {}).get(today, {"main": [], "extra": []})
-    
+
     msg = "📋 Твои задачи на сегодня:\n\n"
 
     main_tasks = tasks.get("main", [])
@@ -71,20 +106,6 @@ async def my_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += "\n\n➕ Дополнительные задачи: —"
 
     await update.message.reply_text(msg)
-
-async def add_extra(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    today = today_str()
-    text = " ".join(context.args)
-    if not text:
-        await update.message.reply_text("Напиши текст задачи после команды.")
-        return
-    data = load_data()
-    data.setdefault(user_id, {"tasks": {}, "stats": {}})
-    data[user_id]["tasks"].setdefault(today, {"main": [], "extra": []})
-    data[user_id]["tasks"][today]["extra"].append({"text": text, "done": False})
-    save_data(data)
-    await update.message.reply_text("Дополнительная задача добавлена.")
 
 async def complete(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
@@ -198,6 +219,21 @@ async def send_evening(app):
         except:
             pass
 
+async def unknown_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    help_text = (
+        "Я не понимаю это сообщение.\n"
+        "Вот доступные команды:\n"
+        "/addmain [текст] — добавить основную задачу (до 3 в день)\n"
+        "/addextra [текст] — добавить дополнительную задачу\n"
+        "/mytasks — показать задачи на сегодня\n"
+        "/complete main|extra [номер] — отметить задачу выполненной\n"
+        "/delete main|extra [номер] — удалить задачу\n"
+        "/reset — сбросить все задачи на сегодня\n"
+        "/stats — показать статистику\n"
+        "/admin — статистика по всем пользователям (админ)\n"
+    )
+    await update.message.reply_text(help_text)
+
 def run_dummy_server():
     class DummyHandler(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -210,13 +246,16 @@ def run_dummy_server():
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("mytasks", my_tasks))
+    app.add_handler(CommandHandler("addmain", add_main))
     app.add_handler(CommandHandler("addextra", add_extra))
+    app.add_handler(CommandHandler("mytasks", my_tasks))
     app.add_handler(CommandHandler("complete", complete))
     app.add_handler(CommandHandler("delete", delete_task))
     app.add_handler(CommandHandler("reset", reset_tasks))
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("admin", admin))
+    # Обработчик для нераспознанных сообщений (тексты без команд)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown_message))
     schedule_jobs(app)
     threading.Thread(target=run_dummy_server, daemon=True).start()
     app.run_polling()
