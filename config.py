@@ -1,2 +1,2 @@
-BOT_TOKEN = "токен_твоего_бота"
-ADMIN_IDS = [твой_телеграм_id, id_менеджера]  # список ID в int
+BOT_TOKEN = "7855842271:AAGo9dn1lQQEAWYvseTT7W48snTD7BQnJC4"
+ADMIN_IDS = [5018948221]  # список ID в int
