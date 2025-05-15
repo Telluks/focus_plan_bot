@@ -43,7 +43,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_data(data)
     await update.message.reply_text(
         "Привет! Я помогу тебе вести ежедневный план задач.\n"
-        "Напиши до 3 основных задач и дополнительные — через /добавить_доп."
+        "Напиши до 3 основных задач и дополнительные — через /addextra."
     )
 
 async def my_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -89,10 +89,10 @@ async def add_extra(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def complete(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     args = context.args
-    if len(args) != 2 or args[0] not in ["основные", "доп"]:
-        await update.message.reply_text("Формат: /завершить основные 1 или /завершить доп 2")
+    if len(args) != 2 or args[0] not in ["main", "extra"]:
+        await update.message.reply_text("Формат: /complete main 1 или /complete extra 2")
         return
-    list_name = "main" if args[0] == "основные" else "extra"
+    list_name = args[0]
     index = int(args[1]) - 1
     today = today_str()
     data = load_data()
@@ -106,10 +106,10 @@ async def complete(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def delete_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     args = context.args
-    if len(args) != 2 or args[0] not in ["основные", "доп"]:
-        await update.message.reply_text("Формат: /удалить основные 1 или /удалить доп 2")
+    if len(args) != 2 or args[0] not in ["main", "extra"]:
+        await update.message.reply_text("Формат: /delete main 1 или /delete extra 2")
         return
-    list_name = "main" if args[0] == "основные" else "extra"
+    list_name = args[0]
     index = int(args[1]) - 1
     today = today_str()
     data = load_data()
@@ -210,12 +210,12 @@ def run_dummy_server():
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("мои_задачи", my_tasks))
-    app.add_handler(CommandHandler("добавить_доп", add_extra))
-    app.add_handler(CommandHandler("завершить", complete))
-    app.add_handler(CommandHandler("удалить", delete_task))
-    app.add_handler(CommandHandler("сброс", reset_tasks))
-    app.add_handler(CommandHandler("статистика", stats))
+    app.add_handler(CommandHandler("mytasks", my_tasks))
+    app.add_handler(CommandHandler("addextra", add_extra))
+    app.add_handler(CommandHandler("complete", complete))
+    app.add_handler(CommandHandler("delete", delete_task))
+    app.add_handler(CommandHandler("reset", reset_tasks))
+    app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("admin", admin))
     schedule_jobs(app)
     threading.Thread(target=run_dummy_server, daemon=True).start()
