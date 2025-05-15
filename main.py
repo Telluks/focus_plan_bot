@@ -41,124 +41,141 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id not in data:
         data[user_id] = {"tasks": {}, "stats": {}}
         save_data(data)
-    await update.message.reply_text("Привет! Я помогу тебе вести ежедневный план задач.\nНапиши до 3 основных задач и дополнительные через /добавить_доп.")
+    await update.message.reply_text(
+        "Привет! Я помогу тебе вести ежедневный план задач.\n"
+        "Напиши до 3 основных задач и дополнительные — через /добавить_доп."
+    )
 
 async def my_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     today = today_str()
     data = load_data()
     tasks = data.get(user_id, {}).get("tasks", {}).get(today, {"main": [], "extra": []})
+    
     msg = "📋 Твои задачи на сегодня:\n\n"
-    msg += "🌟 Основные задачи:\n" + "\n".join([f"{i+1}. {'✅ ' if t['done'] else '❌ '} {t['text']}" for i, t in enumerate(tasks.get("main", []))]) or "—"
-    msg += "\n\n➕ Дополнительные задачи:\n" + "\n".join([f"{i+1}. {'✅ ' if t['done'] else '❌ '} {t['text']}" for i, t in enumerate(tasks.get("extra", []))]) or "—"
+
+    main_tasks = tasks.get("main", [])
+    if main_tasks:
+        msg += "🌟 Основные задачи:\n" + "\n".join([
+            f"{i+1}. {'✅' if t['done'] else '❌'} {t['text']}" for i, t in enumerate(main_tasks)
+        ])
+    else:
+        msg += "🌟 Основные задачи: —\n"
+
+    extra_tasks = tasks.get("extra", [])
+    if extra_tasks:
+        msg += "\n\n➕ Дополнительные задачи:\n" + "\n".join([
+            f"{i+1}. {'✅' if t['done'] else '❌'} {t['text']}" for i, t in enumerate(extra_tasks)
+        ])
+    else:
+        msg += "\n\n➕ Дополнительные задачи: —"
+
     await update.message.reply_text(msg)
 
 async def add_extra(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
-    data = load_data()
     today = today_str()
-    task_text = " ".join(context.args)
-    if not task_text:
-        await update.message.reply_text("Напиши дополнительную задачу после команды.")
+    text = " ".join(context.args)
+    if not text:
+        await update.message.reply_text("Напиши текст задачи после команды.")
         return
-    task = {"text": task_text, "done": False}
+    data = load_data()
     data.setdefault(user_id, {"tasks": {}, "stats": {}})
     data[user_id]["tasks"].setdefault(today, {"main": [], "extra": []})
-    data[user_id]["tasks"][today]["extra"].append(task)
+    data[user_id]["tasks"][today]["extra"].append({"text": text, "done": False})
     save_data(data)
-    await update.message.reply_text(f"Добавлена доп. задача: {task_text}")
+    await update.message.reply_text("Дополнительная задача добавлена.")
 
 async def complete(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
-    today = today_str()
-    data = load_data()
-    all_tasks = data.get(user_id, {}).get("tasks", {}).get(today, {"main": [], "extra": []})
     args = context.args
-    if not args or len(args) < 2 or args[0] not in ("основные", "доп"):
-        await update.message.reply_text("Формат: /завершить основные 2 или /завершить доп 1")
+    if len(args) != 2 or args[0] not in ["основные", "доп"]:
+        await update.message.reply_text("Формат: /завершить основные 1 или /завершить доп 2")
         return
     list_name = "main" if args[0] == "основные" else "extra"
+    index = int(args[1]) - 1
+    today = today_str()
+    data = load_data()
     try:
-        idx = int(args[1]) - 1
-        all_tasks[list_name][idx]["done"] = True
+        data[user_id]["tasks"][today][list_name][index]["done"] = True
         save_data(data)
         await update.message.reply_text("Задача отмечена как выполненная.")
     except:
-        await update.message.reply_text("Неверный номер задачи.")
+        await update.message.reply_text("Ошибка: неправильный номер задачи.")
+
+async def delete_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    args = context.args
+    if len(args) != 2 or args[0] not in ["основные", "доп"]:
+        await update.message.reply_text("Формат: /удалить основные 1 или /удалить доп 2")
+        return
+    list_name = "main" if args[0] == "основные" else "extra"
+    index = int(args[1]) - 1
+    today = today_str()
+    data = load_data()
+    try:
+        del data[user_id]["tasks"][today][list_name][index]
+        save_data(data)
+        await update.message.reply_text("Задача удалена.")
+    except:
+        await update.message.reply_text("Ошибка при удалении.")
 
 async def reset_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     today = today_str()
     data = load_data()
-    if user_id in data and today in data[user_id]["tasks"]:
-        data[user_id]["tasks"][today] = {"main": [], "extra": []}
-        save_data(data)
-    await update.message.reply_text("Все задачи на сегодня сброшены.")
-
-async def delete_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    today = today_str()
-    data = load_data()
-    args = context.args
-    if not args or len(args) < 2:
-        await update.message.reply_text("Формат: /удалить основные 1 или /удалить доп 2")
-        return
-    list_name = "main" if args[0] == "основные" else "extra"
-    try:
-        idx = int(args[1]) - 1
-        del data[user_id]["tasks"][today][list_name][idx]
-        save_data(data)
-        await update.message.reply_text("Задача удалена.")
-    except:
-        await update.message.reply_text("Неверный номер.")
+    data.setdefault(user_id, {"tasks": {}, "stats": {}})
+    data[user_id]["tasks"][today] = {"main": [], "extra": []}
+    save_data(data)
+    await update.message.reply_text("Задачи на сегодня сброшены.")
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     data = load_data()
-    count = 0
+    total = 0
     done = 0
-    for date, sets in data.get(user_id, {}).get("tasks", {}).items():
-        for task in sets.get("main", []) + sets.get("extra", []):
-            count += 1
-            if task["done"]:
+    for day in data.get(user_id, {}).get("tasks", {}).values():
+        for t in day.get("main", []) + day.get("extra", []):
+            total += 1
+            if t["done"]:
                 done += 1
-    await update.message.reply_text(f"📊 Выполнено {done} из {count} задач за всё время.")
+    await update.message.reply_text(f"📊 Всего: {total}, выполнено: {done}")
 
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_user.id) not in ADMIN_IDS:
+    if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("Нет доступа.")
         return
     data = load_data()
-    msg = "📋 Общая статистика:\n"
-    for uid, val in data.items():
+    msg = "📋 Статистика всех пользователей:\n"
+    for uid, user in data.items():
         total = 0
         done = 0
-        for day in val["tasks"].values():
-            for task in day["main"] + day["extra"]:
+        for d in user.get("tasks", {}).values():
+            for t in d.get("main", []) + d.get("extra", []):
                 total += 1
-                if task["done"]:
+                if t["done"]:
                     done += 1
-        msg += f"👤 {uid}: {done}/{total} задач\n"
+        msg += f"👤 {uid}: {done}/{total}\n"
     await update.message.reply_text(msg)
 
-def transfer_tasks():
+def transfer_unfinished_tasks():
     data = load_data()
-    yesterday = today_str(-1)
+    yday = today_str(-1)
     today = today_str()
     for user, udata in data.items():
-        if yesterday in udata["tasks"]:
-            for list_name in ["main", "extra"]:
-                for task in udata["tasks"][yesterday][list_name]:
+        if yday in udata["tasks"]:
+            for list_type in ["main", "extra"]:
+                for task in udata["tasks"][yday].get(list_type, []):
                     if not task["done"]:
                         data[user]["tasks"].setdefault(today, {"main": [], "extra": []})
-                        data[user]["tasks"][today][list_name].append(task)
+                        data[user]["tasks"][today][list_type].append(task)
     save_data(data)
 
 def schedule_jobs(app):
     scheduler.add_job(lambda: app.create_task(send_morning(app)), "cron", hour=11)
     scheduler.add_job(lambda: app.create_task(send_afternoon(app)), "cron", hour=14)
     scheduler.add_job(lambda: app.create_task(send_evening(app)), "cron", hour=20)
-    scheduler.add_job(transfer_tasks, "cron", hour=5)
+    scheduler.add_job(transfer_unfinished_tasks, "cron", hour=5)
 
 async def send_morning(app):
     for user in load_data():
@@ -177,7 +194,7 @@ async def send_afternoon(app):
 async def send_evening(app):
     for user in load_data():
         try:
-            await app.bot.send_message(chat_id=int(user), text="🌇 Вечерний отчёт: что удалось сделать? Отметь выполненные задачи командой /завершить")
+            await app.bot.send_message(chat_id=int(user), text="🌇 Вечерний отчёт: что удалось сделать?")
         except:
             pass
 
@@ -195,8 +212,8 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("мои_задачи", my_tasks))
     app.add_handler(CommandHandler("добавить_доп", add_extra))
-    app.add_handler(CommandHandler("удалить", delete_task))
     app.add_handler(CommandHandler("завершить", complete))
+    app.add_handler(CommandHandler("удалить", delete_task))
     app.add_handler(CommandHandler("сброс", reset_tasks))
     app.add_handler(CommandHandler("статистика", stats))
     app.add_handler(CommandHandler("admin", admin))

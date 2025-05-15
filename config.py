@@ -1,3 +1,7 @@
-# Вставь сюда свой Telegram API Token и ID администратора
-BOT_TOKEN = "7855842271:AAGo9dn1lQQEAWYvseTT7W48snTD7BQnJC4"
-ADMIN_IDS = [5018948221]  # Замените на свой Telegram ID
+import os
+
+# Токен от @BotFather
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+
+# Админы: список ID через запятую, например "123456789,987654321"
+ADMIN_IDS = list(map(int, os.environ.get("ADMIN_IDS", "").split(",")))
