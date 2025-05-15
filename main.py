@@ -2,28 +2,23 @@ import os
 import json
 import logging
 import asyncio
-import nest_asyncio
 from datetime import datetime, timedelta
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from telegram import Update, BotCommand
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, ContextTypes,
     MessageHandler, filters
 )
-from apscheduler.schedulers.background import BackgroundScheduler
-from config import BOT_TOKEN, ADMIN_IDS
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_IDS = set(map(int, os.getenv("ADMIN_IDS", "").split(","))) if os.getenv("ADMIN_IDS") else set()
 
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
 DATA_FILE = "data.json"
-WEBHOOK_URL = "https://focus-plan-bot.onrender.com/webhook"
-
-scheduler = BackgroundScheduler()
-scheduler.start()
-
+scheduler = AsyncIOScheduler()
 
 def today_str(offset=0):
     return (datetime.now() + timedelta(days=offset)).strftime("%Y-%m-%d")
-
 
 def load_data():
     try:
@@ -32,11 +27,9 @@ def load_data():
     except:
         return {}
 
-
 def save_data(data):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
-
 
 async def set_commands(app):
     commands = [
@@ -54,7 +47,6 @@ async def set_commands(app):
     ]
     await app.bot.set_my_commands(commands)
 
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Привет! Я помогу тебе вести задачи.\n"
@@ -69,7 +61,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/stats — твоя статистика\n"
         "/admin — статистика всех пользователей\n"
     )
-
 
 async def add_task(update, context, task_type):
     user_id = str(update.effective_user.id)
@@ -88,14 +79,11 @@ async def add_task(update, context, task_type):
     save_data(data)
     await update.message.reply_text(f"{'Основная' if task_type == 'main' else 'Дополнительная'} задача добавлена.")
 
-
 async def add_main(update, context):
     await add_task(update, context, "main")
 
-
 async def add_extra(update, context):
     await add_task(update, context, "extra")
-
 
 async def my_tasks(update, context):
     user_id = str(update.effective_user.id)
@@ -103,17 +91,9 @@ async def my_tasks(update, context):
     data = load_data()
     tasks = data.get(user_id, {}).get("tasks", {}).get(today, {"main": [], "extra": []})
     msg = "📋 Задачи на сегодня:\n\n"
-
-    msg += "🌟 Основные:\n" + (
-        "\n".join([f"{i+1}. {'✅' if t['done'] else '❌'} {t['text']}" for i, t in enumerate(tasks["main"])])
-        if tasks["main"] else "—"
-    )
-    msg += "\n\n➕ Дополнительные:\n" + (
-        "\n".join([f"{i+1}. {'✅' if t['done'] else '❌'} {t['text']}" for i, t in enumerate(tasks["extra"])])
-        if tasks["extra"] else "—"
-    )
+    msg += "🌟 Основные:\n" + ("\n".join([f"{i+1}. {'✅' if t['done'] else '❌'} {t['text']}" for i, t in enumerate(tasks["main"])]) if tasks["main"] else "—")
+    msg += "\n\n➕ Дополнительные:\n" + ("\n".join([f"{i+1}. {'✅' if t['done'] else '❌'} {t['text']}" for i, t in enumerate(tasks["extra"])]) if tasks["extra"] else "—")
     await update.message.reply_text(msg)
-
 
 async def complete(update, context, list_name):
     user_id = str(update.effective_user.id)
@@ -127,7 +107,6 @@ async def complete(update, context, list_name):
     except:
         await update.message.reply_text("Ошибка: укажи правильный номер задачи.")
 
-
 async def delete(update, context, list_name):
     user_id = str(update.effective_user.id)
     today = today_str()
@@ -140,7 +119,6 @@ async def delete(update, context, list_name):
     except:
         await update.message.reply_text("Ошибка при удалении задачи.")
 
-
 async def reset(update, context):
     user_id = str(update.effective_user.id)
     today = today_str()
@@ -148,7 +126,6 @@ async def reset(update, context):
     data[user_id]["tasks"][today] = {"main": [], "extra": []}
     save_data(data)
     await update.message.reply_text("Задачи сброшены.")
-
 
 async def stats(update, context):
     user_id = str(update.effective_user.id)
@@ -160,7 +137,6 @@ async def stats(update, context):
             if t["done"]:
                 done += 1
     await update.message.reply_text(f"📊 Выполнено {done} из {total} задач.")
-
 
 async def admin(update, context):
     if update.effective_user.id not in ADMIN_IDS:
@@ -174,10 +150,8 @@ async def admin(update, context):
         msg += f"{uid}: {done}/{total}\n"
     await update.message.reply_text(msg)
 
-
 async def unknown(update, context):
     await update.message.reply_text("Я не понял. Введи команду из меню.")
-
 
 def transfer_unfinished_tasks():
     data = load_data()
@@ -192,14 +166,6 @@ def transfer_unfinished_tasks():
                         data[user]["tasks"][today][list_type].append(task)
     save_data(data)
 
-
-def schedule_jobs(app):
-    scheduler.add_job(lambda: app.create_task(send_reminder(app, "🌅 Доброе утро! Введи задачи.")), "cron", hour=11)
-    scheduler.add_job(lambda: app.create_task(send_reminder(app, "🕑 Напоминание о задачах.")), "cron", hour=14)
-    scheduler.add_job(lambda: app.create_task(send_reminder(app, "🌇 Вечерний отчёт: что сделано?")), "cron", hour=20)
-    scheduler.add_job(transfer_unfinished_tasks, "cron", hour=5)
-
-
 async def send_reminder(app, text):
     for user in load_data():
         try:
@@ -207,6 +173,12 @@ async def send_reminder(app, text):
         except:
             pass
 
+def schedule_jobs(app):
+    scheduler.add_job(lambda: asyncio.create_task(send_reminder(app, "🌅 Доброе утро! Введи задачи.")), "cron", hour=11)
+    scheduler.add_job(lambda: asyncio.create_task(send_reminder(app, "🕑 Напоминание о задачах.")), "cron", hour=14)
+    scheduler.add_job(lambda: asyncio.create_task(send_reminder(app, "🌇 Вечерний отчёт: что сделано?")), "cron", hour=20)
+    scheduler.add_job(transfer_unfinished_tasks, "cron", hour=5)
+    scheduler.start()
 
 async def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
@@ -226,14 +198,8 @@ async def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown))
 
     schedule_jobs(app)
-    await app.initialize()
-    await app.bot.set_webhook(WEBHOOK_URL)
-    await app.start()
-    await app.updater.start_polling()
-    await app.updater.stop()
-    await app.stop()
-    await app.shutdown()
+
+    await app.run_polling()
 
 if __name__ == "__main__":
-    nest_asyncio.apply()
     asyncio.run(main())
