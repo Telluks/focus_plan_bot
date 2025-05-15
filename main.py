@@ -3,9 +3,10 @@ import os; os.environ["PORT"] = "10000"
 import json
 import logging
 import threading
+import asyncio
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from telegram import Update
+from telegram import Update, BotCommand
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, ContextTypes,
     MessageHandler, filters
@@ -34,6 +35,22 @@ def load_data():
 def save_data(data):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
+
+async def set_commands(app):
+    commands = [
+        BotCommand("start", "Запустить бота"),
+        BotCommand("addmain", "Добавить основную задачу"),
+        BotCommand("addextra", "Добавить дополнительную задачу"),
+        BotCommand("mytasks", "Показать мои задачи"),
+        BotCommand("complete_main", "Завершить основную задачу"),
+        BotCommand("complete_extra", "Завершить дополнительную задачу"),
+        BotCommand("delete_main", "Удалить основную задачу"),
+        BotCommand("delete_extra", "Удалить дополнительную задачу"),
+        BotCommand("reset", "Сбросить задачи"),
+        BotCommand("stats", "Статистика"),
+        BotCommand("admin", "Статистика по пользователям (только админ)")
+    ]
+    await app.bot.set_my_commands(commands)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
@@ -87,15 +104,15 @@ async def my_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = load_data()
     tasks = data.get(user_id, {}).get("tasks", {}).get(today, {"main": [], "extra": []})
 
-    msg = "📋 Твои задачи на сегодня:\n\n"
+    msg = "\U0001F4CB Твои задачи на сегодня:\n\n"
 
     main_tasks = tasks.get("main", [])
     if main_tasks:
-        msg += "🌟 Основные задачи:\n" + "\n".join([
+        msg += "\U0001F31F Основные задачи:\n" + "\n".join([
             f"{i+1}. {'✅' if t['done'] else '❌'} {t['text']}" for i, t in enumerate(main_tasks)
         ])
     else:
-        msg += "🌟 Основные задачи: —\n"
+        msg += "\U0001F31F Основные задачи: —\n"
 
     extra_tasks = tasks.get("extra", [])
     if extra_tasks:
@@ -107,39 +124,41 @@ async def my_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(msg)
 
-async def complete(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def complete_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await _complete(update, context, "main")
+
+async def complete_extra(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await _complete(update, context, "extra")
+
+async def delete_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await _delete(update, context, "main")
+
+async def delete_extra(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await _delete(update, context, "extra")
+
+async def _complete(update: Update, context: ContextTypes.DEFAULT_TYPE, list_name: str):
     user_id = str(update.effective_user.id)
-    args = context.args
-    if len(args) != 2 or args[0] not in ["main", "extra"]:
-        await update.message.reply_text("Формат: /complete main 1 или /complete extra 2")
-        return
-    list_name = args[0]
-    index = int(args[1]) - 1
     today = today_str()
     data = load_data()
     try:
-        data[user_id]["tasks"][today][list_name][index]["done"] = True
+        idx = int(context.args[0]) - 1
+        data[user_id]["tasks"][today][list_name][idx]["done"] = True
         save_data(data)
         await update.message.reply_text("Задача отмечена как выполненная.")
     except:
-        await update.message.reply_text("Ошибка: неправильный номер задачи.")
+        await update.message.reply_text("Ошибка: укажи правильный номер задачи.")
 
-async def delete_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def _delete(update: Update, context: ContextTypes.DEFAULT_TYPE, list_name: str):
     user_id = str(update.effective_user.id)
-    args = context.args
-    if len(args) != 2 or args[0] not in ["main", "extra"]:
-        await update.message.reply_text("Формат: /delete main 1 или /delete extra 2")
-        return
-    list_name = args[0]
-    index = int(args[1]) - 1
     today = today_str()
     data = load_data()
     try:
-        del data[user_id]["tasks"][today][list_name][index]
+        idx = int(context.args[0]) - 1
+        del data[user_id]["tasks"][today][list_name][idx]
         save_data(data)
         await update.message.reply_text("Задача удалена.")
     except:
-        await update.message.reply_text("Ошибка при удалении.")
+        await update.message.reply_text("Ошибка при удалении задачи.")
 
 async def reset_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
@@ -178,6 +197,23 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     done += 1
         msg += f"👤 {uid}: {done}/{total}\n"
     await update.message.reply_text(msg)
+
+async def unknown_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    help_text = (
+        "Я не понимаю это сообщение.\n"
+        "Вот доступные команды:\n"
+        "/addmain [текст] — добавить основную задачу\n"
+        "/addextra [текст] — добавить дополнительную задачу\n"
+        "/mytasks — показать задачи на сегодня\n"
+        "/complete_main [номер] — завершить основную\n"
+        "/complete_extra [номер] — завершить дополнительную\n"
+        "/delete_main [номер] — удалить основную\n"
+        "/delete_extra [номер] — удалить дополнительную\n"
+        "/reset — сбросить задачи\n"
+        "/stats — статистика\n"
+        "/admin — статистика по пользователям (админ)"
+    )
+    await update.message.reply_text(help_text)
 
 def transfer_unfinished_tasks():
     data = load_data()
@@ -219,21 +255,6 @@ async def send_evening(app):
         except:
             pass
 
-async def unknown_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    help_text = (
-        "Я не понимаю это сообщение.\n"
-        "Вот доступные команды:\n"
-        "/addmain [текст] — добавить основную задачу (до 3 в день)\n"
-        "/addextra [текст] — добавить дополнительную задачу\n"
-        "/mytasks — показать задачи на сегодня\n"
-        "/complete main|extra [номер] — отметить задачу выполненной\n"
-        "/delete main|extra [номер] — удалить задачу\n"
-        "/reset — сбросить все задачи на сегодня\n"
-        "/stats — показать статистику\n"
-        "/admin — статистика по всем пользователям (админ)\n"
-    )
-    await update.message.reply_text(help_text)
-
 def run_dummy_server():
     class DummyHandler(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -245,16 +266,18 @@ def run_dummy_server():
 
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
+    asyncio.run(set_commands(app))
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("addmain", add_main))
     app.add_handler(CommandHandler("addextra", add_extra))
     app.add_handler(CommandHandler("mytasks", my_tasks))
-    app.add_handler(CommandHandler("complete", complete))
-    app.add_handler(CommandHandler("delete", delete_task))
+    app.add_handler(CommandHandler("complete_main", complete_main))
+    app.add_handler(CommandHandler("complete_extra", complete_extra))
+    app.add_handler(CommandHandler("delete_main", delete_main))
+    app.add_handler(CommandHandler("delete_extra", delete_extra))
     app.add_handler(CommandHandler("reset", reset_tasks))
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("admin", admin))
-    # Обработчик для нераспознанных сообщений (тексты без команд)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown_message))
     schedule_jobs(app)
     threading.Thread(target=run_dummy_server, daemon=True).start()
