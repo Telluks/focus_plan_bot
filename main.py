@@ -264,7 +264,7 @@ def run_dummy_server():
     server = HTTPServer(("0.0.0.0", int(os.environ["PORT"])), DummyHandler)
     server.serve_forever()
 
-async def main_async():
+async def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     await set_commands(app)
 
@@ -284,8 +284,6 @@ async def main_async():
     threading.Thread(target=run_dummy_server, daemon=True).start()
     await app.run_polling()
 
-def main():
-    asyncio.run(main_async())
-
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.get_event_loop().run_until_complete(main())
