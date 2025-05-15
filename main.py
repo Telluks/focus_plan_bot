@@ -264,9 +264,10 @@ def run_dummy_server():
     server = HTTPServer(("0.0.0.0", int(os.environ["PORT"])), DummyHandler)
     server.serve_forever()
 
-def main():
+async def main_async():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
-    asyncio.run(set_commands(app))
+    await set_commands(app)
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("addmain", add_main))
     app.add_handler(CommandHandler("addextra", add_extra))
@@ -281,7 +282,10 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown_message))
     schedule_jobs(app)
     threading.Thread(target=run_dummy_server, daemon=True).start()
-    app.run_polling()
+    await app.run_polling()
+
+def main():
+    asyncio.run(main_async())
 
 if __name__ == "__main__":
     main()
